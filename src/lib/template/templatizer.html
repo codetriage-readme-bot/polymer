@@ -95,47 +95,45 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
         template._content = template.content;
       }
       // fast path if template's anonymous class has been memoized
-      if (template._content._ctor) {
-        this.ctor = template._content._ctor;
-        //console.log('Templatizer.templatize: using memoized archetype');
-        // forward parent properties to archetype
-        this._prepParentProperties(this.ctor.prototype, template);
-        return;
+      var archetype;
+      if (template._content._archetype) {
+        archetype = template._content._archetype;
+      } else {
+        // `archetype` is the prototype of the anonymous
+        // class created by the templatizer
+        archetype = Object.create(Polymer.Base);
+        // normally Annotations.parseAnnotations(template) but
+        // archetypes do special caching
+        this._customPrepAnnotations(archetype, template);
+
+        // setup accessors
+        archetype._prepEffects();
+        this._customPrepEffects(archetype);
+        archetype._prepBehaviors();
+        archetype._prepPropertyInfo();
+        archetype._prepBindings();
+
+        // boilerplate code
+        archetype._notifyPathUp = this._notifyPathUpImpl;
+        archetype._scopeElementClass = this._scopeElementClassImpl;
+        archetype.listen = this._listenImpl;
+        archetype._showHideChildren = this._showHideChildrenImpl;
+        archetype.__setPropertyOrig = this.__setProperty;
+        archetype.__setProperty = this.__setPropertyImpl;
+        // cache archetype
+        template._content._archetype = archetype;
       }
-      // `archetype` is the prototype of the anonymous
-      // class created by the templatizer
-      var archetype = Object.create(Polymer.Base);
-      // normally Annotations.parseAnnotations(template) but
-      // archetypes do special caching
-      this._customPrepAnnotations(archetype, template);
-
-      // forward parent properties to archetype
-      this._prepParentProperties(archetype, template);
-
-      // setup accessors
-      archetype._prepEffects();
-      this._customPrepEffects(archetype);
-      archetype._prepBehaviors();
-      archetype._prepPropertyInfo();
-      archetype._prepBindings();
-
-      // boilerplate code
-      archetype._notifyPathUp = this._notifyPathUpImpl;
-      archetype._scopeElementClass = this._scopeElementClassImpl;
-      archetype.listen = this._listenImpl;
-      archetype._showHideChildren = this._showHideChildrenImpl;
-      archetype.__setPropertyOrig = this.__setProperty;
-      archetype.__setProperty = this.__setPropertyImpl;
       // boilerplate code
       var _constructor = this._constructorImpl;
       var ctor = function TemplateInstance(model, host) {
         _constructor.call(this, model, host);
       };
       // standard references
-      ctor.prototype = archetype;
+      ctor.prototype = Object.create(archetype);
+      ctor.prototype._template = template;
       archetype.constructor = ctor;
-      // TODO(sjmiles): constructor cache?
-      template._content._ctor = ctor;
+      // forward parent properties to archetype
+      this._prepParentProperties(archetype, template);
       // TODO(sjmiles): choose less general name
       this.ctor = ctor;
     },
@@ -198,7 +196,6 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     },
 
     _customPrepAnnotations: function(archetype, template) {
-      archetype._template = template;
       var c = template._content;
       if (!c._notes) {
         var rootDataHost = archetype._rootDataHost;
